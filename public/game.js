@@ -70,10 +70,13 @@ function hexCenter(q, r) {
 
 function hexVertices(lat, lng, scale = 1) {
   const verts = [];
+  const lngScale = 1 / Math.cos(lat * Math.PI / 180);
   for (let i = 0; i < 6; i++) {
-    const angle = Math.PI / 3 * i - Math.PI / 6; // pointy-top: first vertex at top-right
-    verts.push([lat + HEX_SIZE * scale * Math.cos(angle),
-                lng + HEX_SIZE * scale * Math.sin(angle)]);
+    const angle = Math.PI / 3 * i - Math.PI / 6;
+    verts.push([
+      lat - HEX_SIZE * scale * Math.sin(angle),        // lat is y but north-up, so flip sin
+      lng + HEX_SIZE * scale * Math.cos(angle) * lngScale, // lng corrected for aspect ratio
+    ]);
   }
   return verts;
 }
