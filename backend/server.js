@@ -12,7 +12,8 @@ if (!SUPABASE_KEY) { console.error('SUPABASE_KEY env var is required'); process.
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const CELL_SIZE  = 0.001;
+const HEX_SIZE   = 0.0007;
+const SQRT3      = Math.sqrt(3);
 const RESPAWN_MS = 5 * 60_000;
 
 app.use(express.json());
@@ -51,11 +52,19 @@ function getResourceType(gridX, gridY) {
   return RESOURCE_TYPES[0];
 }
 
-function latLngToGrid(lat, lng) {
-  return {
-    gridX: Math.floor(lng / CELL_SIZE),
-    gridY: Math.floor(lat / CELL_SIZE),
-  };
+function hexRound(q, r) {
+  const s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  return { q: rq, r: rr };
+}
+
+function latLngToHex(lat, lng) {
+  const qf = (lng / HEX_SIZE) / SQRT3 - (lat / HEX_SIZE) / 3;
+  const rf  = (lat / HEX_SIZE) * 2 / 3;
+  return hexRound(qf, rf);
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────
@@ -65,7 +74,7 @@ app.post('/api/player/join', async (req, res) => {
   if (!name || lat == null || lng == null)
     return res.status(400).json({ error: 'missing fields' });
 
-  const { gridX, gridY } = latLngToGrid(lat, lng);
+  const { q, r } = latLngToHex(lat, lng);
   const now = Date.now();
 
   const { data: existing } = await db
@@ -77,29 +86,29 @@ app.post('/api/player/join', async (req, res) => {
   if (existing) {
     const { data: player, error } = await db
       .from('players')
-      .update({ lat, lng, grid_x: gridX, grid_y: gridY, last_seen: now })
+      .update({ lat, lng, grid_x: q, grid_y: r, last_seen: now })
       .eq('id', existing.id)
       .select()
       .single();
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ id: player.id, name: player.name, lat, lng, gridX: player.grid_x, gridY: player.grid_y, inventory: player.inventory || {} });
+    return res.json({ id: player.id, name: player.name, lat, lng, hexQ: player.grid_x, hexR: player.grid_y, inventory: player.inventory || {} });
   }
 
   const id = uuidv4();
   const { data: player, error } = await db
     .from('players')
-    .insert({ id, name, lat, lng, grid_x: gridX, grid_y: gridY, last_seen: now, inventory: {} })
+    .insert({ id, name, lat, lng, grid_x: q, grid_y: r, last_seen: now, inventory: {} })
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ id: player.id, name: player.name, lat, lng, gridX: player.grid_x, gridY: player.grid_y, inventory: player.inventory || {} });
+  res.json({ id: player.id, name: player.name, lat, lng, hexQ: player.grid_x, hexR: player.grid_y, inventory: player.inventory || {} });
 });
 
 app.post('/api/player/move', async (req, res) => {
-  const { playerId, lat, lng, gridX, gridY } = req.body;
+  const { playerId, lat, lng, hexQ, hexR } = req.body;
   const { error } = await db
     .from('players')
-    .update({ lat, lng, grid_x: gridX, grid_y: gridY, last_seen: Date.now() })
+    .update({ lat, lng, grid_x: hexQ, grid_y: hexR, last_seen: Date.now() })
     .eq('id', playerId);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
@@ -120,11 +129,11 @@ app.get('/api/resources', async (req, res) => {
 
 app.post('/api/collect', async (req, res) => {
   try {
-    const { playerId, gridX, gridY } = req.body;
-    const key = `${gridX}_${gridY}`;
+    const { playerId, hexQ, hexR } = req.body;
+    const key = `${hexQ}_${hexR}`;
     const now = Date.now();
 
-    const resourceType = getResourceType(Number(gridX), Number(gridY));
+    const resourceType = getResourceType(Number(hexQ), Number(hexR));
     if (!resourceType) return res.status(400).json({ error: 'no resource at this cell' });
 
     const cutoff = now - RESPAWN_MS;

@@ -1,6 +1,7 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
-const CELL               = 0.001;
+const HEX_SIZE           = 0.0007;
+const SQRT3              = Math.sqrt(3);
 const MIN_ZOOM_RESOURCES = 15;
 const SYNC_MS            = 5000;
 
@@ -31,29 +32,53 @@ function seededRng(seed) {
   };
 }
 
-function getResource(gx, gy) {
-  const rng = seededRng(hash32(gx, gy));
+function getResource(q, r) {
+  const rng = seededRng(hash32(q, r));
   if (rng() > 0.15) return null;
   const roll = rng();
   let cum = 0;
-  for (const r of RESOURCES) {
-    cum += r.w;
-    if (roll < cum) return r;
+  for (const res of RESOURCES) {
+    cum += res.w;
+    if (roll < cum) return res;
   }
   return RESOURCES[0];
 }
 
-// ── Coordinate helpers ────────────────────────────────────────────────────
+// ── Hex coordinate helpers (pointy-top axial) ─────────────────────────────
 
-function latLngToGrid(lat, lng) {
-  return { gx: Math.floor(lng / CELL), gy: Math.floor(lat / CELL) };
+function hexRound(q, r) {
+  const s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  return { q: rq, r: rr };
 }
 
-function gridCenter(gx, gy) {
-  return { lat: (gy + 0.5) * CELL, lng: (gx + 0.5) * CELL };
+function latLngToHex(lat, lng) {
+  const qf = (lng / HEX_SIZE) / SQRT3 - (lat / HEX_SIZE) / 3;
+  const rf  = (lat / HEX_SIZE) * 2 / 3;
+  return hexRound(qf, rf);
 }
 
-function gkey(gx, gy) { return `${gx}_${gy}`; }
+function hexCenter(q, r) {
+  return {
+    lat: HEX_SIZE * 1.5 * r,
+    lng: HEX_SIZE * SQRT3 * (q + r / 2),
+  };
+}
+
+function hexVertices(lat, lng, scale = 1) {
+  const verts = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 3 * i - Math.PI / 6; // pointy-top: first vertex at top-right
+    verts.push([lat + HEX_SIZE * scale * Math.cos(angle),
+                lng + HEX_SIZE * scale * Math.sin(angle)]);
+  }
+  return verts;
+}
+
+function gkey(q, r) { return `${q}_${r}`; }
 
 // ── Game state ────────────────────────────────────────────────────────────
 
@@ -101,7 +126,7 @@ async function startGame() {
 
   try {
     const data = await api('/api/player/join', 'POST', { name, lat, lng });
-    player = { ...data, gx: data.gridX, gy: data.gridY };
+    player = { ...data, q: data.hexQ, r: data.hexR };
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Begin Adventure';
@@ -121,7 +146,7 @@ function initMap(lat, lng) {
     center: [lat, lng],
     zoom: 17,
     zoomControl: true,
-    doubleClickZoom: false,  // disable double-click zoom
+    doubleClickZoom: false,
   });
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -139,7 +164,6 @@ function initMap(lat, lng) {
   refreshResources();
   syncPlayers();
 
-  // All clicks go through one handler — it decides move vs collect
   map.on('click', onMapClick);
   map.on('moveend zoomend', refreshResources);
 
@@ -175,19 +199,36 @@ function drawGrid() {
 
   const alpha = Math.min(1, (zoom - MIN_ZOOM_RESOURCES) / 2) * 0.45;
   ctx.strokeStyle = `rgba(100, 149, 237, ${alpha})`;
-  ctx.lineWidth   = 1;
+  ctx.lineWidth = 1;
 
   const bounds = map.getBounds();
-  const startY = Math.floor(bounds.getSouth() / CELL) * CELL;
-  const startX = Math.floor(bounds.getWest()  / CELL) * CELL;
+  const sw = latLngToHex(bounds.getSouth(), bounds.getWest());
+  const ne = latLngToHex(bounds.getNorth(), bounds.getEast());
+  const qMin = Math.min(sw.q, ne.q) - 2;
+  const qMax = Math.max(sw.q, ne.q) + 2;
+  const rMin = Math.min(sw.r, ne.r) - 2;
+  const rMax = Math.max(sw.r, ne.r) + 2;
 
-  for (let lat = startY; lat <= bounds.getNorth() + CELL; lat += CELL) {
-    const p = map.latLngToContainerPoint([lat, bounds.getWest()]);
-    ctx.beginPath(); ctx.moveTo(0, p.y); ctx.lineTo(size.x, p.y); ctx.stroke();
-  }
-  for (let lng = startX; lng <= bounds.getEast() + CELL; lng += CELL) {
-    const p = map.latLngToContainerPoint([bounds.getNorth(), lng]);
-    ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, size.y); ctx.stroke();
+  // pixel radius: distance from center to vertex = HEX_SIZE degrees
+  const ctr = map.getCenter();
+  const p0  = map.latLngToContainerPoint([ctr.lat, ctr.lng]);
+  const p1  = map.latLngToContainerPoint([ctr.lat + HEX_SIZE, ctr.lng]);
+  const R   = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+
+  for (let r = rMin; r <= rMax; r++) {
+    for (let q = qMin; q <= qMax; q++) {
+      const c  = hexCenter(q, r);
+      const cp = map.latLngToContainerPoint([c.lat, c.lng]);
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI / 3 * i - Math.PI / 6;
+        const x = cp.x + R * Math.cos(angle);
+        const y = cp.y + R * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 }
 
@@ -207,32 +248,33 @@ async function refreshResources() {
 
 function renderResourcesInView() {
   const bounds = map.getBounds();
-  const minX = Math.floor(bounds.getWest()  / CELL);
-  const maxX = Math.ceil( bounds.getEast()  / CELL);
-  const minY = Math.floor(bounds.getSouth() / CELL);
-  const maxY = Math.ceil( bounds.getNorth() / CELL);
+  const sw = latLngToHex(bounds.getSouth(), bounds.getWest());
+  const ne = latLngToHex(bounds.getNorth(), bounds.getEast());
+  const qMin = Math.min(sw.q, ne.q) - 1;
+  const qMax = Math.max(sw.q, ne.q) + 1;
+  const rMin = Math.min(sw.r, ne.r) - 1;
+  const rMax = Math.max(sw.r, ne.r) + 1;
 
-  if ((maxX - minX) * (maxY - minY) > 600) return;
+  if ((qMax - qMin) * (rMax - rMin) > 600) return;
 
   const wanted = new Set();
 
-  for (let gy = minY; gy <= maxY; gy++) {
-    for (let gx = minX; gx <= maxX; gx++) {
-      const def = getResource(gx, gy);
+  for (let r = rMin; r <= rMax; r++) {
+    for (let q = qMin; q <= qMax; q++) {
+      const def = getResource(q, r);
       if (!def) continue;
-      const k = gkey(gx, gy);
+      const k = gkey(q, r);
       if (collectedSet.has(k)) continue;
       wanted.add(k);
 
       if (!resourceLayers.has(k)) {
-        const pad = CELL * 0.06;
-        const rect = L.rectangle(
-          [[gy * CELL + pad, gx * CELL + pad], [(gy + 1) * CELL - pad, (gx + 1) * CELL - pad]],
-          { color: def.color, weight: 1.5, fillColor: def.fill, fillOpacity: 1, interactive: false }
-        );
-        // interactive: false — clicks fall through to the map handler
-        rect.addTo(map);
-        resourceLayers.set(k, rect);
+        const c = hexCenter(q, r);
+        const poly = L.polygon(hexVertices(c.lat, c.lng, 0.88), {
+          color: def.color, weight: 1.5,
+          fillColor: def.fill, fillOpacity: 1,
+          interactive: false,
+        }).addTo(map);
+        resourceLayers.set(k, poly);
       }
     }
   }
@@ -250,28 +292,27 @@ function clearResourceLayers() {
 // ── Click handler — move or collect ──────────────────────────────────────
 
 async function onMapClick(e) {
-  const { gx, gy } = latLngToGrid(e.latlng.lat, e.latlng.lng);
-  const k   = gkey(gx, gy);
-  const def = getResource(gx, gy);
+  const { q, r } = latLngToHex(e.latlng.lat, e.latlng.lng);
+  const k   = gkey(q, r);
+  const def = getResource(q, r);
 
   if (def && !collectedSet.has(k)) {
-    await collectResource(gx, gy, def);
+    await collectResource(q, r, def);
   } else {
-    await moveTo(gx, gy);
+    await moveTo(q, r);
   }
 }
 
 // ── Collect ───────────────────────────────────────────────────────────────
 
-async function collectResource(gx, gy, def) {
-  // Move to cell first if not adjacent
-  const dx = Math.abs(player.gx - gx);
-  const dy = Math.abs(player.gy - gy);
-  if (dx > 1 || dy > 1) await moveTo(gx, gy);
+async function collectResource(q, r, def) {
+  const dq = Math.abs(player.q - q);
+  const dr = Math.abs(player.r - r);
+  if (dq > 1 || dr > 1) await moveTo(q, r);
 
   let result;
   try {
-    result = await api('/api/collect', 'POST', { playerId: player.id, gridX: gx, gridY: gy });
+    result = await api('/api/collect', 'POST', { playerId: player.id, hexQ: q, hexR: r });
   } catch (e) {
     const msg = e.status === 409
       ? `${def.icon} Already collected — respawning soon`
@@ -282,7 +323,7 @@ async function collectResource(gx, gy, def) {
 
   player.inventory = result.inventory;
 
-  const k = gkey(gx, gy);
+  const k = gkey(q, r);
   if (resourceLayers.has(k)) { map.removeLayer(resourceLayers.get(k)); resourceLayers.delete(k); }
   collectedSet.set(k, Date.now());
 
@@ -294,12 +335,12 @@ async function collectResource(gx, gy, def) {
 
 // ── Movement ──────────────────────────────────────────────────────────────
 
-async function moveTo(gx, gy) {
-  const { lat, lng } = gridCenter(gx, gy);
-  player.lat = lat; player.lng = lng; player.gx = gx; player.gy = gy;
+async function moveTo(q, r) {
+  const { lat, lng } = hexCenter(q, r);
+  player.lat = lat; player.lng = lng; player.q = q; player.r = r;
   playerMarker.setLatLng([lat, lng]);
   updateTopBar();
-  api('/api/player/move', 'POST', { playerId: player.id, lat, lng, gridX: gx, gridY: gy })
+  api('/api/player/move', 'POST', { playerId: player.id, lat, lng, hexQ: q, hexR: r })
     .catch(() => {});
 }
 
@@ -337,19 +378,19 @@ function setTab(btn) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
 
-  const tab = btn.dataset.tab;
+  const tab   = btn.dataset.tab;
   const panel = document.getElementById('panel');
 
   document.querySelectorAll('.panel-section').forEach(s => s.classList.add('hidden'));
 
   if (tab === 'map') {
     panel.classList.add('hidden');
-    map.invalidateSize();
+    setTimeout(() => { map.invalidateSize(); drawGrid(); }, 50);
     return;
   }
 
   panel.classList.remove('hidden');
-  map.invalidateSize();
+  setTimeout(() => { map.invalidateSize(); drawGrid(); }, 50);
 
   const section = document.getElementById(`panel-${tab}`);
   if (section) section.classList.remove('hidden');
@@ -361,7 +402,7 @@ function setTab(btn) {
 
 function updateTopBar() {
   document.getElementById('hero-name-top').textContent = `⚔️ ${player.name}`;
-  document.getElementById('hero-grid-top').textContent = `${player.gx}, ${player.gy}`;
+  document.getElementById('hero-grid-top').textContent = `${player.q}, ${player.r}`;
 }
 
 function updateInventoryPanel() {
@@ -393,7 +434,6 @@ function flashTopLog(msg) {
   const pill = document.getElementById('top-log-pill');
   pill.textContent = msg;
   pill.classList.remove('hidden');
-  // Restart animation
   pill.style.animation = 'none';
   void pill.offsetWidth;
   pill.style.animation = '';
