@@ -160,19 +160,65 @@ function hexCenter(q, r) {
   };
 }
 
+const HEX_DIRS = [
+  { q:1, r:0 }, { q:1, r:-1 }, { q:0, r:-1 },
+  { q:-1, r:0 }, { q:-1, r:1 }, { q:0, r:1 },
+];
+
 function hexDistance(q1, r1, q2, r2) {
   return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;
 }
 
-function hexLinePath(q1, r1, q2, r2) {
-  const n = hexDistance(q1, r1, q2, r2);
-  if (n === 0) return [];
-  const steps = [];
-  for (let i = 1; i <= n; i++) {
-    const t = i / n;
-    steps.push(hexRound(q1 + (q2 - q1) * t, r1 + (r2 - r1) * t));
+function isBlocked(q, r) {
+  return getResource(q, r) !== null && !collectedSet.has(gkey(q, r));
+}
+
+// BFS pathfinding; destination hex is always passable (collect handles entry)
+function hexBfsPath(startQ, startR, endQ, endR) {
+  if (startQ === endQ && startR === endR) return [];
+  const endKey   = gkey(endQ, endR);
+  const startKey = gkey(startQ, startR);
+  const queue    = [startKey];
+  const parent   = new Map([[startKey, null]]);
+
+  while (queue.length) {
+    const curKey = queue.shift();
+    const [cq, cr] = curKey.split('_').map(Number);
+
+    for (const d of HEX_DIRS) {
+      const nq = cq + d.q, nr = cr + d.r;
+      const nk = gkey(nq, nr);
+      if (parent.has(nk)) continue;
+      if (nk !== endKey && isBlocked(nq, nr)) continue;
+      parent.set(nk, curKey);
+
+      if (nk === endKey) {
+        const path = [];
+        let k = nk;
+        while (parent.get(k) !== null) {
+          const [pq, pr] = k.split('_').map(Number);
+          path.unshift({ q: pq, r: pr });
+          k = parent.get(k);
+        }
+        return path;
+      }
+      queue.push(nk);
+    }
   }
-  return steps;
+  return []; // no path
+}
+
+// Nearest free hex adjacent to (q, r), closest to player
+function bestAdjacentFreeHex(q, r) {
+  let best = null, bestDist = Infinity;
+  for (const d of HEX_DIRS) {
+    const nq = q + d.q, nr = r + d.r;
+    if (!isBlocked(nq, nr)) {
+      const dist = hexDistance(player.q, player.r, nq, nr);
+      if (dist < bestDist) { bestDist = dist; best = { q: nq, r: nr }; }
+    }
+  }
+  return best;
 }
 
 function gkey(q, r) { return `${q}_${r}`; }
@@ -432,6 +478,20 @@ async function refreshResources() {
   collectedSet.clear();
   for (const [k, ts] of Object.entries(data.collected)) collectedSet.set(k, ts);
 
+  // Push player if a resource respawned under them
+  if (player && !isMoving && isBlocked(player.q, player.r)) {
+    const adj = bestAdjacentFreeHex(player.q, player.r);
+    if (adj) {
+      const c = hexCenter(adj.q, adj.r);
+      player.lat = c.lat; player.lng = c.lng; player.q = adj.q; player.r = adj.r;
+      playerMarker.setLatLng([c.lat, c.lng]);
+      map.setView([c.lat, c.lng], map.getZoom(), { animate: false });
+      updateTopBar();
+      api('/api/player/move', 'POST', { playerId: player.id, lat: c.lat, lng: c.lng, hexQ: adj.q, hexR: adj.r }).catch(() => {});
+      addLog('🌀 Resource spawned beneath you — pushed to adjacent hex', 'warn');
+    }
+  }
+
   drawGrid();
   syncResourceMarkers();
 }
@@ -454,8 +514,12 @@ async function onMapClick(e) {
 // ── Collect ───────────────────────────────────────────────────────────────
 
 async function collectResource(q, r, def) {
-  const dist = hexDistance(player.q, player.r, q, r);
-  if (dist > 1) await moveTo(q, r);
+  if (hexDistance(player.q, player.r, q, r) > 1) {
+    const adj = bestAdjacentFreeHex(q, r);
+    if (!adj) { addLog(`${def.icon} Resource is surrounded — can't reach`, 'warn'); return; }
+    await moveTo(adj.q, adj.r);
+    if (hexDistance(player.q, player.r, q, r) > 1) return; // couldn't get close enough
+  }
 
   let result;
   try {
@@ -492,8 +556,11 @@ function easeInOut(t) {
 
 async function moveTo(targetQ, targetR) {
   if (isMoving) return;
-  const path = hexLinePath(player.q, player.r, targetQ, targetR);
-  if (!path.length) return;
+  const path = hexBfsPath(player.q, player.r, targetQ, targetR);
+  if (!path.length) {
+    addLog('No path — resource blocking the way', 'warn');
+    return;
+  }
 
   // Draw green dashed path line
   const pathLatLngs = [
