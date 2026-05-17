@@ -124,6 +124,50 @@ h1 {
   height: 100dvh;
 }
 
+/* ── Resource bar ────────────────────────────────────────────────────── */
+#resource-bar {
+  height: 32px;
+  flex-shrink: 0;
+  background: rgba(10,10,20,0.92);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 8px;
+  z-index: 1001;
+  gap: 4px;
+}
+
+.res-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+}
+
+.res-bar-icon { font-size: 14px; line-height: 1; flex-shrink: 0; }
+
+.res-bar-count {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--gold);
+  font-weight: bold;
+  min-width: 22px;
+}
+
+/* Flash animation when resource changes */
+@keyframes resBump {
+  0%   { transform: scale(1);    color: var(--gold); }
+  40%  { transform: scale(1.35); color: #fff; }
+  100% { transform: scale(1);    color: var(--gold); }
+}
+.res-bar-count.bump { animation: resBump 0.35s ease-out; }
+
+/* ── Movement cursor while travelling ───────────────────────────────── */
+#map.moving { cursor: wait; }
+
 /* ── Top bar ─────────────────────────────────────────────────────────── */
 #top-bar {
   height: var(--top-h);
@@ -382,6 +426,18 @@ h1 {
   pointer-events: none;
   z-index: 1000;
 }
+
+/* ── Resource sprites ────────────────────────────────────────────────── */
+.res-node {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.7));
+  transition: transform 0.15s;
+}
+.res-node:hover { transform: scale(1.15); }
 
 /* ── Leaflet overrides ───────────────────────────────────────────────── */
 .leaflet-container { background: #1a1a2e; }
