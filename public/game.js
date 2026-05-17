@@ -4,138 +4,105 @@ const HEX_SIZE           = 0.0007;
 const SQRT3              = Math.sqrt(3);
 const MIN_ZOOM_RESOURCES = 15;
 const SYNC_MS            = 5000;
-const MOVE_MS_PER_HEX    = 600; // ms to cross one hex
+const MOVE_MS_PER_HEX    = 500;
 
 const RESOURCES = [
-  { type: 'wood',  icon: '🌲', name: 'Wood',  color: '#388e3c', fill: 'rgba(56,142,60,0.25)',   w: 0.35 },
-  { type: 'stone', icon: '🪨', name: 'Stone', color: '#757575', fill: 'rgba(117,117,117,0.25)', w: 0.25 },
-  { type: 'iron',  icon: '⚙️', name: 'Iron',  color: '#8d6e63', fill: 'rgba(141,110,99,0.25)',  w: 0.18 },
-  { type: 'food',  icon: '🌾', name: 'Grain', color: '#f9a825', fill: 'rgba(249,168,37,0.25)',  w: 0.12 },
-  { type: 'gold',  icon: '💰', name: 'Gold',  color: '#fdd835', fill: 'rgba(253,216,53,0.25)',  w: 0.06 },
-  { type: 'gem',   icon: '💎', name: 'Gems',  color: '#1e88e5', fill: 'rgba(30,136,229,0.25)', w: 0.04 },
+  { type: 'wood',  icon: '🌲', name: 'Wood',  color: '#388e3c', fill: 'rgba(56,142,60,0.28)',   w: 0.35 },
+  { type: 'stone', icon: '🪨', name: 'Stone', color: '#757575', fill: 'rgba(117,117,117,0.28)', w: 0.25 },
+  { type: 'iron',  icon: '⚙️', name: 'Iron',  color: '#8d6e63', fill: 'rgba(141,110,99,0.28)',  w: 0.18 },
+  { type: 'food',  icon: '🌾', name: 'Grain', color: '#f9a825', fill: 'rgba(249,168,37,0.28)',  w: 0.12 },
+  { type: 'gold',  icon: '💰', name: 'Gold',  color: '#fdd835', fill: 'rgba(253,216,53,0.28)',  w: 0.06 },
+  { type: 'gem',   icon: '💎', name: 'Gems',  color: '#1e88e5', fill: 'rgba(30,136,229,0.28)', w: 0.04 },
 ];
 
-// ── Resource SVG sprites (HoMM-inspired node designs) ────────────────────
+const RESOURCE_FILL_MAP = Object.fromEntries(RESOURCES.map(r => [r.type, r.fill]));
+
+// ── Resource SVG sprites ──────────────────────────────────────────────────
 
 const SPRITES = {
   wood: (color) => `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
     <ellipse cx="20" cy="34" rx="14" ry="4" fill="rgba(0,0,0,0.4)"/>
-    <!-- ground logs -->
     <rect x="4"  y="24" width="13" height="7" rx="3.5" fill="#4e2600"/>
     <rect x="23" y="24" width="13" height="7" rx="3.5" fill="#5c3000"/>
     <ellipse cx="4"  cy="27.5" rx="3.5" ry="3.5" fill="#6b3a00" stroke="#3a1a00" stroke-width="1"/>
     <ellipse cx="17" cy="27.5" rx="3.5" ry="3.5" fill="#7a4400" stroke="#3a1a00" stroke-width="1"/>
     <ellipse cx="23" cy="27.5" rx="3.5" ry="3.5" fill="#6b3a00" stroke="#3a1a00" stroke-width="1"/>
     <ellipse cx="36" cy="27.5" rx="3.5" ry="3.5" fill="#7a4400" stroke="#3a1a00" stroke-width="1"/>
-    <!-- top log -->
     <rect x="11" y="17" width="18" height="7" rx="3.5" fill="#8b5e00"/>
     <ellipse cx="11" cy="20.5" rx="3.5" ry="3.5" fill="#a06b00" stroke="#5c3800" stroke-width="1"/>
     <ellipse cx="29" cy="20.5" rx="3.5" ry="3.5" fill="#a06b00" stroke="#5c3800" stroke-width="1"/>
-    <!-- ring detail on top log -->
     <circle cx="20" cy="20.5" r="2" fill="none" stroke="#6b4400" stroke-width="0.8"/>
     <circle cx="20" cy="20.5" r="0.8" fill="#6b4400"/>
-    <!-- axe -->
     <line x1="28" y1="18" x2="33" y2="8" stroke="#8b7355" stroke-width="1.5" stroke-linecap="round"/>
     <path d="M31 10 Q36 6 36 12 Q33 13 31 10Z" fill="${color}"/>
   </svg>`,
 
   stone: (color) => `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
     <ellipse cx="20" cy="35" rx="15" ry="4" fill="rgba(0,0,0,0.4)"/>
-    <!-- back boulders -->
     <ellipse cx="10" cy="26" rx="8"  ry="7"  fill="#4a4a4a"/>
     <ellipse cx="30" cy="25" rx="7"  ry="6"  fill="#525252"/>
-    <!-- front boulder -->
     <ellipse cx="20" cy="28" rx="10" ry="9"  fill="#616161"/>
-    <!-- highlight chips -->
     <path d="M14 22 L18 19 L16 24Z" fill="#757575"/>
     <path d="M24 20 L27 23 L22 24Z" fill="#6e6e6e"/>
-    <path d="M26 27 L30 25 L29 30Z" fill="#6a6a6a"/>
-    <!-- glint -->
     <circle cx="16" cy="23" r="1.2" fill="rgba(255,255,255,0.25)"/>
-    <circle cx="23" cy="21" r="0.8" fill="rgba(255,255,255,0.2)"/>
-    <!-- pickaxe -->
     <line x1="28" y1="20" x2="35" y2="10" stroke="#8b7355" stroke-width="1.5" stroke-linecap="round"/>
     <path d="M33 12 Q38 7 38 13 Q35 15 33 12Z" fill="${color}"/>
   </svg>`,
 
   iron: (color) => `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
     <ellipse cx="20" cy="35" rx="14" ry="4" fill="rgba(0,0,0,0.4)"/>
-    <!-- ore chunks -->
     <polygon points="8,30 6,22 14,18 18,28" fill="#5d4037"/>
     <polygon points="22,28 20,18 30,16 32,26" fill="#6d4c41"/>
     <polygon points="12,32 10,24 22,22 24,32" fill="#795548"/>
-    <!-- ore veins (metallic) -->
     <polygon points="9,28 7,23 13,20 16,26" fill="${color}" opacity="0.7"/>
     <polygon points="23,26 22,20 28,18 30,24" fill="${color}" opacity="0.6"/>
     <polygon points="14,30 13,25 20,23 22,29" fill="${color}" opacity="0.8"/>
-    <!-- specular -->
     <circle cx="10" cy="24" r="1" fill="rgba(255,255,255,0.3)"/>
-    <circle cx="25" cy="20" r="0.8" fill="rgba(255,255,255,0.25)"/>
-    <!-- pickaxe -->
     <line x1="28" y1="20" x2="35" y2="10" stroke="#8b7355" stroke-width="1.5" stroke-linecap="round"/>
     <path d="M33 12 Q38 7 38 13 Q35 15 33 12Z" fill="#aaa"/>
   </svg>`,
 
   food: (color) => `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
     <ellipse cx="20" cy="36" rx="13" ry="3.5" fill="rgba(0,0,0,0.35)"/>
-    <!-- stalks -->
     <line x1="12" y1="34" x2="12" y2="14" stroke="#8b6914" stroke-width="1.8" stroke-linecap="round"/>
     <line x1="17" y1="34" x2="17" y2="12" stroke="#8b6914" stroke-width="1.8" stroke-linecap="round"/>
     <line x1="22" y1="34" x2="22" y2="13" stroke="#8b6914" stroke-width="1.8" stroke-linecap="round"/>
     <line x1="27" y1="34" x2="27" y2="15" stroke="#8b6914" stroke-width="1.8" stroke-linecap="round"/>
-    <!-- grain heads -->
     <ellipse cx="12" cy="11" rx="2.5" ry="5" fill="${color}" transform="rotate(-8,12,11)"/>
     <ellipse cx="17" cy="9"  rx="2.5" ry="5" fill="${color}" transform="rotate(5,17,9)"/>
     <ellipse cx="22" cy="10" rx="2.5" ry="5" fill="${color}" transform="rotate(-3,22,10)"/>
     <ellipse cx="27" cy="12" rx="2.5" ry="5" fill="${color}" transform="rotate(8,27,12)"/>
-    <!-- leaf blades -->
     <path d="M12 20 Q7 17 9 14" stroke="#6b8e23" stroke-width="1.5" fill="none" stroke-linecap="round"/>
     <path d="M22 19 Q27 16 25 13" stroke="#6b8e23" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-    <!-- binding -->
     <rect x="11" y="29" width="18" height="3" rx="1.5" fill="#8b6914" opacity="0.7"/>
   </svg>`,
 
   gold: (color) => `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
     <ellipse cx="20" cy="35" rx="13" ry="3.5" fill="rgba(0,0,0,0.4)"/>
-    <!-- coin stack back -->
     <ellipse cx="20" cy="22" rx="11" ry="4" fill="#a07800"/>
     <rect x="9" y="18" width="22" height="4" fill="#a07800"/>
     <ellipse cx="20" cy="18" rx="11" ry="4" fill="#b08800"/>
-    <!-- coin stack mid -->
     <ellipse cx="20" cy="26" rx="11" ry="4" fill="#b09000"/>
     <rect x="9" y="22" width="22" height="4" fill="#b09000"/>
     <ellipse cx="20" cy="22" rx="11" ry="4" fill="#c09800"/>
-    <!-- coin stack front -->
     <ellipse cx="20" cy="30" rx="11" ry="4" fill="#c8a000"/>
     <rect x="9" y="26" width="22" height="4" fill="#c8a000"/>
     <ellipse cx="20" cy="26" rx="11" ry="4" fill="${color}"/>
-    <!-- coin face detail -->
     <ellipse cx="20" cy="26" rx="7" ry="2.5" fill="none" stroke="#c09000" stroke-width="0.8"/>
-    <text x="20" y="28" text-anchor="middle" fill="#a07800" font-size="4" font-weight="bold">G</text>
-    <!-- glint -->
     <ellipse cx="14" cy="24" rx="2" ry="0.8" fill="rgba(255,255,255,0.3)" transform="rotate(-20,14,24)"/>
   </svg>`,
 
   gem: (color) => `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
     <ellipse cx="20" cy="36" rx="12" ry="3" fill="rgba(0,0,0,0.4)"/>
-    <!-- crystal cluster base -->
     <polygon points="16,34 12,20 20,16 24,34" fill="#0d47a1" opacity="0.8"/>
-    <!-- left crystal -->
-    <polygon points="10,32 7,18  16,14 17,30" fill="#1565c0"/>
-    <polygon points="10,32 7,18  12,15" fill="#1976d2" opacity="0.6"/>
-    <!-- right crystal -->
+    <polygon points="10,32 7,18 16,14 17,30" fill="#1565c0"/>
     <polygon points="30,32 33,17 24,13 23,30" fill="#1565c0"/>
-    <polygon points="30,32 33,17 28,14" fill="#1976d2" opacity="0.6"/>
-    <!-- center crystal (tallest) -->
     <polygon points="14,34 12,16 20,10 28,16 26,34" fill="${color}"/>
     <polygon points="14,34 12,16 20,10" fill="#42a5f5" opacity="0.5"/>
-    <!-- facet lines -->
     <line x1="20" y1="10" x2="20" y2="34" stroke="rgba(255,255,255,0.2)" stroke-width="0.8"/>
     <line x1="20" y1="10" x2="14" y2="22" stroke="rgba(255,255,255,0.15)" stroke-width="0.6"/>
     <line x1="20" y1="10" x2="26" y2="22" stroke="rgba(255,255,255,0.15)" stroke-width="0.6"/>
-    <!-- glint -->
     <circle cx="18" cy="14" r="1.5" fill="rgba(255,255,255,0.7)"/>
-    <circle cx="22" cy="17" r="0.8" fill="rgba(255,255,255,0.5)"/>
   </svg>`,
 };
 
@@ -193,20 +160,19 @@ function hexCenter(q, r) {
   };
 }
 
-function hexVertices(lat, lng, scale = 1) {
-  const verts = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = Math.PI / 3 * i - Math.PI / 6;
-    verts.push([
-      lat - HEX_SIZE * scale * Math.sin(angle),
-      lng + HEX_SIZE * scale * Math.cos(angle),
-    ]);
-  }
-  return verts;
-}
-
 function hexDistance(q1, r1, q2, r2) {
   return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;
+}
+
+function hexLinePath(q1, r1, q2, r2) {
+  const n = hexDistance(q1, r1, q2, r2);
+  if (n === 0) return [];
+  const steps = [];
+  for (let i = 1; i <= n; i++) {
+    const t = i / n;
+    steps.push(hexRound(q1 + (q2 - q1) * t, r1 + (r2 - r1) * t));
+  }
+  return steps;
 }
 
 function gkey(q, r) { return `${q}_${r}`; }
@@ -214,12 +180,13 @@ function gkey(q, r) { return `${q}_${r}`; }
 // ── Game state ────────────────────────────────────────────────────────────
 
 let map, gridCanvas;
-let player        = null;
-let playerMarker  = null;
-let resourceLayers = new Map(); // key → { poly, marker }
-let collectedSet   = new Map();
-let otherMarkers   = new Map();
-let isMoving       = false;
+let player         = null;
+let playerMarker   = null;
+let resourceMarkers = new Map(); // key → L.marker (sprite only)
+let collectedSet    = new Map();
+let otherMarkers    = new Map();
+let isMoving        = false;
+let moveLine        = null; // L.polyline for movement path
 
 // ── API ───────────────────────────────────────────────────────────────────
 
@@ -279,12 +246,21 @@ function initMap(lat, lng) {
     zoom: 17,
     zoomControl: true,
     doubleClickZoom: false,
+    dragging: false,       // locked to hero
+    scrollWheelZoom: true,
+    touchZoom: true,
   });
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '© OpenStreetMap contributors © CARTO',
     maxZoom: 19,
+    minZoom: 14,
   }).addTo(map);
+
+  // Re-centre on hero after any zoom
+  map.on('zoomend', () => {
+    if (player) map.setView([player.lat, player.lng], map.getZoom(), { animate: false });
+  });
 
   initGridCanvas();
 
@@ -298,14 +274,14 @@ function initMap(lat, lng) {
   syncPlayers();
 
   map.on('click', onMapClick);
-  map.on('moveend zoomend', refreshResources);
+  map.on('moveend zoomend', () => { drawGrid(); syncResourceMarkers(); });
 
   setInterval(() => { refreshResources(); syncPlayers(); }, SYNC_MS);
 
   addLog(`⚔️ ${player.name} enters the world`, 'move');
 }
 
-// ── Grid canvas ───────────────────────────────────────────────────────────
+// ── Grid canvas (draws outlines + resource fills) ─────────────────────────
 
 function initGridCanvas() {
   gridCanvas = document.createElement('canvas');
@@ -315,7 +291,19 @@ function initGridCanvas() {
   drawGrid();
 }
 
+function traceHexOnCanvas(ctx, cp, R) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 3 * i - Math.PI / 6;
+    const x = cp.x + R * Math.cos(angle);
+    const y = cp.y + R * Math.sin(angle);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
 function drawGrid() {
+  if (!map) return;
   const size = map.getSize();
   const zoom = map.getZoom();
   const ctx  = gridCanvas.getContext('2d');
@@ -330,10 +318,6 @@ function drawGrid() {
   }
   document.getElementById('zoom-hint').classList.add('hidden');
 
-  const alpha = Math.min(1, (zoom - MIN_ZOOM_RESOURCES) / 2) * 0.45;
-  ctx.strokeStyle = `rgba(100, 149, 237, ${alpha})`;
-  ctx.lineWidth = 1;
-
   const bounds = map.getBounds();
   const sw = latLngToHex(bounds.getSouth(), bounds.getWest());
   const ne = latLngToHex(bounds.getNorth(), bounds.getEast());
@@ -342,53 +326,59 @@ function drawGrid() {
   const rMin = Math.min(sw.r, ne.r) - 2;
   const rMax = Math.max(sw.r, ne.r) + 2;
 
+  // R = pixel distance for one hex unit in the lng direction
   const ctr = map.getCenter();
   const p0  = map.latLngToContainerPoint([ctr.lat, ctr.lng]);
-  const p1  = map.latLngToContainerPoint([ctr.lat + HEX_SIZE, ctr.lng]);
-  const R   = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  const p1  = map.latLngToContainerPoint([ctr.lat, ctr.lng + HEX_SIZE]);
+  const R   = Math.abs(p1.x - p0.x);
 
+  const alpha = Math.min(1, (zoom - MIN_ZOOM_RESOURCES) / 2) * 0.45;
+
+  // First pass: fills
+  for (let r = rMin; r <= rMax; r++) {
+    for (let q = qMin; q <= qMax; q++) {
+      const k   = gkey(q, r);
+      const def = getResource(q, r);
+      if (!def || collectedSet.has(k)) continue;
+      const c  = hexCenter(q, r);
+      const cp = map.latLngToContainerPoint([c.lat, c.lng]);
+      traceHexOnCanvas(ctx, cp, R * 0.97);
+      ctx.fillStyle = def.fill;
+      ctx.fill();
+    }
+  }
+
+  // Second pass: outlines
+  ctx.strokeStyle = `rgba(100, 149, 237, ${alpha})`;
+  ctx.lineWidth   = 1;
   for (let r = rMin; r <= rMax; r++) {
     for (let q = qMin; q <= qMax; q++) {
       const c  = hexCenter(q, r);
       const cp = map.latLngToContainerPoint([c.lat, c.lng]);
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const angle = Math.PI / 3 * i - Math.PI / 6;
-        const x = cp.x + R * Math.cos(angle);
-        const y = cp.y + R * Math.sin(angle);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
+      traceHexOnCanvas(ctx, cp, R);
       ctx.stroke();
     }
   }
 }
 
-// ── Resources ─────────────────────────────────────────────────────────────
-
-async function refreshResources() {
-  if (map.getZoom() < MIN_ZOOM_RESOURCES) { clearResourceLayers(); return; }
-
-  let data;
-  try { data = await api('/api/resources'); } catch { return; }
-
-  collectedSet.clear();
-  for (const [k, ts] of Object.entries(data.collected)) collectedSet.set(k, ts);
-
-  renderResourcesInView();
-}
+// ── Resource sprite markers ───────────────────────────────────────────────
 
 function resourceIcon(def) {
-  const svg = SPRITES[def.type](def.color);
   return L.divIcon({
     className: '',
-    html: `<div class="res-node">${svg}</div>`,
+    html: `<div class="res-node">${SPRITES[def.type](def.color)}</div>`,
     iconSize:   [36, 36],
     iconAnchor: [18, 18],
   });
 }
 
-function renderResourcesInView() {
+function syncResourceMarkers() {
+  if (!map || map.getZoom() < MIN_ZOOM_RESOURCES) {
+    resourceMarkers.forEach(m => map.removeLayer(m));
+    resourceMarkers.clear();
+    return;
+  }
+
   const bounds = map.getBounds();
   const sw = latLngToHex(bounds.getSouth(), bounds.getWest());
   const ne = latLngToHex(bounds.getNorth(), bounds.getEast());
@@ -409,44 +399,42 @@ function renderResourcesInView() {
       if (collectedSet.has(k)) continue;
       wanted.add(k);
 
-      if (!resourceLayers.has(k)) {
+      if (!resourceMarkers.has(k)) {
         const c = hexCenter(q, r);
-
-        const poly = L.polygon(hexVertices(c.lat, c.lng, 0.88), {
-          color: def.color, weight: 1.2,
-          fillColor: def.fill, fillOpacity: 1,
-          interactive: false,
-        }).addTo(map);
-
-        const marker = L.marker([c.lat, c.lng], {
+        const m = L.marker([c.lat, c.lng], {
           icon: resourceIcon(def),
           interactive: false,
           zIndexOffset: 100,
         }).addTo(map);
-
-        resourceLayers.set(k, { poly, marker });
+        resourceMarkers.set(k, m);
       }
     }
   }
 
-  for (const [k, layers] of resourceLayers) {
-    if (!wanted.has(k)) {
-      map.removeLayer(layers.poly);
-      map.removeLayer(layers.marker);
-      resourceLayers.delete(k);
-    }
+  for (const [k, m] of resourceMarkers) {
+    if (!wanted.has(k)) { map.removeLayer(m); resourceMarkers.delete(k); }
   }
 }
 
-function clearResourceLayers() {
-  for (const { poly, marker } of resourceLayers.values()) {
-    map.removeLayer(poly);
-    map.removeLayer(marker);
+async function refreshResources() {
+  if (map.getZoom() < MIN_ZOOM_RESOURCES) {
+    resourceMarkers.forEach(m => map.removeLayer(m));
+    resourceMarkers.clear();
+    drawGrid();
+    return;
   }
-  resourceLayers.clear();
+
+  let data;
+  try { data = await api('/api/resources'); } catch { return; }
+
+  collectedSet.clear();
+  for (const [k, ts] of Object.entries(data.collected)) collectedSet.set(k, ts);
+
+  drawGrid();
+  syncResourceMarkers();
 }
 
-// ── Click handler — move or collect ──────────────────────────────────────
+// ── Click handler ─────────────────────────────────────────────────────────
 
 async function onMapClick(e) {
   if (isMoving) return;
@@ -464,9 +452,8 @@ async function onMapClick(e) {
 // ── Collect ───────────────────────────────────────────────────────────────
 
 async function collectResource(q, r, def) {
-  const dq = Math.abs(player.q - q);
-  const dr = Math.abs(player.r - r);
-  if (dq > 1 || dr > 1) await moveTo(q, r);
+  const dist = hexDistance(player.q, player.r, q, r);
+  if (dist > 1) await moveTo(q, r);
 
   let result;
   try {
@@ -482,15 +469,13 @@ async function collectResource(q, r, def) {
   player.inventory = result.inventory;
 
   const k = gkey(q, r);
-  const layers = resourceLayers.get(k);
-  if (layers) {
-    map.removeLayer(layers.poly);
-    map.removeLayer(layers.marker);
-    resourceLayers.delete(k);
-  }
+  const m = resourceMarkers.get(k);
+  if (m) { map.removeLayer(m); resourceMarkers.delete(k); }
   collectedSet.set(k, Date.now());
+  drawGrid();
 
-  showPopup(def);
+  const c = hexCenter(q, r);
+  showFloater(c.lat, c.lng, `+1 ${def.name}`, def.color);
   updateResourceBar(def.type);
   updateInventoryPanel();
   addLog(`${def.icon} Collected ${def.name}`, 'collect');
@@ -503,46 +488,59 @@ function easeInOut(t) {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
 
-async function moveTo(q, r) {
+async function moveTo(targetQ, targetR) {
   if (isMoving) return;
+  const path = hexLinePath(player.q, player.r, targetQ, targetR);
+  if (!path.length) return;
+
+  // Draw green dashed path line
+  const pathLatLngs = [
+    [player.lat, player.lng],
+    ...path.map(({ q, r }) => { const c = hexCenter(q, r); return [c.lat, c.lng]; }),
+  ];
+  if (moveLine) map.removeLayer(moveLine);
+  moveLine = L.polyline(pathLatLngs, {
+    color: '#4caf50', weight: 2.5, opacity: 0.85, dashArray: '7 5',
+  }).addTo(map);
+
   isMoving = true;
   document.getElementById('map').classList.add('moving');
 
-  const startLat = player.lat, startLng = player.lng;
-  const { lat: endLat, lng: endLng } = hexCenter(q, r);
-  const dist     = Math.max(1, hexDistance(player.q, player.r, q, r));
-  const duration = dist * MOVE_MS_PER_HEX;
+  for (const step of path) {
+    const startLat = player.lat, startLng = player.lng;
+    const { lat: endLat, lng: endLng } = hexCenter(step.q, step.r);
+    const startTime = performance.now();
 
-  const startTime = performance.now();
-
-  await new Promise(resolve => {
-    function frame(now) {
-      const t  = Math.min(1, (now - startTime) / duration);
-      const et = easeInOut(t);
-      const lat = startLat + (endLat - startLat) * et;
-      const lng = startLng + (endLng - startLng) * et;
-      playerMarker.setLatLng([lat, lng]);
-      if (t < 1) {
-        requestAnimationFrame(frame);
-      } else {
-        resolve();
+    await new Promise(resolve => {
+      function frame(now) {
+        const t  = Math.min(1, (now - startTime) / MOVE_MS_PER_HEX);
+        const et = easeInOut(t);
+        const lat = startLat + (endLat - startLat) * et;
+        const lng = startLng + (endLng - startLng) * et;
+        playerMarker.setLatLng([lat, lng]);
+        map.setView([lat, lng], map.getZoom(), { animate: false });
+        if (t < 1) requestAnimationFrame(frame);
+        else resolve();
       }
-    }
-    requestAnimationFrame(frame);
-  });
+      requestAnimationFrame(frame);
+    });
 
-  player.lat = endLat; player.lng = endLng; player.q = q; player.r = r;
+    player.lat = endLat; player.lng = endLng; player.q = step.q; player.r = step.r;
+    updateTopBar();
+    api('/api/player/move', 'POST', {
+      playerId: player.id, lat: endLat, lng: endLng, hexQ: step.q, hexR: step.r,
+    }).catch(() => {});
+  }
+
   isMoving = false;
   document.getElementById('map').classList.remove('moving');
-  updateTopBar();
-
-  api('/api/player/move', 'POST', { playerId: player.id, lat: endLat, lng: endLng, hexQ: q, hexR: r })
-    .catch(() => {});
+  if (moveLine) { map.removeLayer(moveLine); moveLine = null; }
 }
 
 // ── Other players ─────────────────────────────────────────────────────────
 
 async function syncPlayers() {
+  if (!player) return;
   let data;
   try {
     data = await api(`/api/players/nearby?lat=${player.lat}&lng=${player.lng}&playerId=${player.id}`);
@@ -609,7 +607,7 @@ function updateResourceBar(bumpType = null) {
     el.textContent = inv[res.type] || 0;
     if (res.type === bumpType) {
       el.classList.remove('bump');
-      void el.offsetWidth; // reflow to restart animation
+      void el.offsetWidth;
       el.classList.add('bump');
     }
   }
@@ -632,12 +630,16 @@ function updateInventoryPanel() {
      </span>`;
 }
 
-function showPopup(def) {
-  const popup = document.getElementById('collect-popup');
-  document.getElementById('popup-icon').textContent = def.icon;
-  document.getElementById('popup-text').textContent  = `+1 ${def.name}!`;
-  popup.classList.remove('hidden');
-  setTimeout(() => popup.classList.add('hidden'), 1400);
+function showFloater(lat, lng, text, color) {
+  const pt  = map.latLngToContainerPoint([lat, lng]);
+  const el  = document.createElement('div');
+  el.className  = 'floater';
+  el.textContent = text;
+  el.style.left  = `${pt.x}px`;
+  el.style.top   = `${pt.y}px`;
+  el.style.color = color;
+  document.getElementById('map').appendChild(el);
+  setTimeout(() => el.remove(), 1100);
 }
 
 function flashTopLog(msg) {
