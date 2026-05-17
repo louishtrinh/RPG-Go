@@ -518,7 +518,6 @@ async function moveTo(targetQ, targetR) {
         const lat = startLat + (endLat - startLat) * et;
         const lng = startLng + (endLng - startLng) * et;
         playerMarker.setLatLng([lat, lng]);
-        map.setView([lat, lng], map.getZoom(), { animate: false });
         if (t < 1) requestAnimationFrame(frame);
         else resolve();
       }
@@ -526,6 +525,7 @@ async function moveTo(targetQ, targetR) {
     });
 
     player.lat = endLat; player.lng = endLng; player.q = step.q; player.r = step.r;
+    map.setView([endLat, endLng], map.getZoom(), { animate: false });
     updateTopBar();
     api('/api/player/move', 'POST', {
       playerId: player.id, lat: endLat, lng: endLng, hexQ: step.q, hexR: step.r,
