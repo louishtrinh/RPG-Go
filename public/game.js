@@ -225,7 +225,9 @@ async function startGame() {
 
   try {
     const data = await api('/api/player/join', 'POST', { name, lat, lng });
-    player = { ...data, q: data.hexQ, r: data.hexR };
+    const q = data.hexQ, r = data.hexR;
+    const center = hexCenter(q, r);
+    player = { ...data, q, r, lat: center.lat, lng: center.lng };
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Begin Adventure';
@@ -235,7 +237,7 @@ async function startGame() {
 
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('game-screen').classList.remove('hidden');
-  initMap(lat, lng);
+  initMap(player.lat, player.lng);
 }
 
 // ── Map ───────────────────────────────────────────────────────────────────
