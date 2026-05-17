@@ -446,6 +446,68 @@ h1 {
   z-index: 1000;
 }
 
+/* ── Camp marker ─────────────────────────────────────────────────────── */
+.camp-marker {
+  font-size: 22px;
+  line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(255,200,50,0.7));
+}
+
+/* ── Camp panel ──────────────────────────────────────────────────────── */
+.camp-info-block {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+}
+.camp-stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 3px 0;
+}
+.camp-label { color: var(--dim); }
+.camp-value { color: var(--text); font-family: monospace; }
+.camp-range-track {
+  height: 5px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.camp-range-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #4caf50;
+  transition: width 0.4s, background 0.4s;
+  width: 0%;
+}
+.camp-cost-block { margin-bottom: 12px; }
+.camp-cost-row {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text);
+  padding: 4px 0;
+}
+.make-camp-btn {
+  width: 100%;
+  padding: 11px;
+  background: linear-gradient(135deg, #2e7d32, #4caf50);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  font-family: var(--font);
+  font-weight: bold;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: opacity 0.2s, transform 0.1s;
+}
+.make-camp-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+.make-camp-btn:disabled { opacity: 0.45; cursor: default; }
+
 /* ── Resource sprites ────────────────────────────────────────────────── */
 .res-node {
   width: 36px;

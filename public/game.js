@@ -1,10 +1,13 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
-const HEX_SIZE           = 0.0007;
-const SQRT3              = Math.sqrt(3);
-const MIN_ZOOM_RESOURCES = 15;
-const SYNC_MS            = 5000;
-const MOVE_MS_PER_HEX    = 500;
+const HEX_SIZE            = 0.0007;
+const SQRT3               = Math.sqrt(3);
+const MIN_ZOOM_RESOURCES  = 15;
+const SYNC_MS             = 5000;
+const MOVE_MS_PER_HEX     = 500;
+const CAMP_RANGE          = 20;
+const CAMP_COOLDOWN_MS    = 30_000;  // 30 s dev — match server
+const CAMP_COST           = { wood: 10, stone: 5 };
 
 const RESOURCES = [
   { type: 'wood',  icon: '🌲', name: 'Wood',  color: '#388e3c', fill: 'rgba(56,142,60,0.28)',   w: 0.35 },
@@ -232,8 +235,10 @@ let resourceMarkers = new Map(); // key → L.marker (sprite only)
 let collectedSet    = new Map();
 let otherMarkers    = new Map();
 let isMoving        = false;
-let moveLine        = null; // L.polyline for movement path
+let moveLine        = null;
 let suppressRedraw  = false;
+let campMarker      = null;
+let townInterval    = null;
 
 // ── API ───────────────────────────────────────────────────────────────────
 
@@ -274,7 +279,11 @@ async function startGame() {
     const data = await api('/api/player/join', 'POST', { name, lat, lng });
     const q = data.hexQ, r = data.hexR;
     const center = hexCenter(q, r);
-    player = { ...data, q, r, lat: center.lat, lng: center.lng };
+    // If player never explicitly set camp, treat spawn hex as camp
+    const campQ = data.campPlacedAt ? data.campQ : q;
+    const campR = data.campPlacedAt ? data.campR : r;
+    player = { ...data, q, r, lat: center.lat, lng: center.lng,
+               campQ, campR, campPlacedAt: data.campPlacedAt || 0 };
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Begin Adventure';
@@ -316,6 +325,11 @@ function initMap(lat, lng) {
   playerMarker = L.marker([lat, lng], { icon: heroIcon(player.name), zIndexOffset: 1000 })
     .addTo(map)
     .bindTooltip(`⚔️ ${player.name} (you)`, { className: 'res-tooltip' });
+
+  const cc = hexCenter(player.campQ, player.campR);
+  campMarker = L.marker([cc.lat, cc.lng], { icon: campIcon(), zIndexOffset: 500 })
+    .addTo(map)
+    .bindTooltip('🏕️ Your Camp', { className: 'res-tooltip' });
 
   updateTopBar();
   updateResourceBar();
@@ -556,6 +570,11 @@ function easeInOut(t) {
 
 async function moveTo(targetQ, targetR) {
   if (isMoving) return;
+  if (hexDistance(targetQ, targetR, player.campQ, player.campR) > CAMP_RANGE) {
+    addLog(`🏕️ Beyond camp range — move your camp first (Town tab)`, 'warn');
+    flashTopLog('🏕️ Too far from camp!');
+    return;
+  }
   const path = hexBfsPath(player.q, player.r, targetQ, targetR);
   if (!path.length) {
     addLog('No path — resource blocking the way', 'warn');
@@ -663,6 +682,12 @@ function setTab(btn) {
   if (section) section.classList.remove('hidden');
 
   if (tab === 'bag') updateInventoryPanel();
+  if (tab === 'town') {
+    updateTownPanel();
+    if (!townInterval) townInterval = setInterval(updateTownPanel, 1000);
+  } else {
+    clearInterval(townInterval); townInterval = null;
+  }
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────
@@ -732,6 +757,72 @@ function addLog(msg, type = '') {
   row.textContent = msg;
   log.insertBefore(row, log.firstChild);
   while (log.children.length > 30) log.lastChild.remove();
+}
+
+// ── Camp ──────────────────────────────────────────────────────────────────
+
+async function makeCamp() {
+  const cooldownLeft = Math.max(0, CAMP_COOLDOWN_MS - (Date.now() - (player.campPlacedAt || 0)));
+  if (cooldownLeft > 0) return;
+
+  try {
+    const data = await api('/api/make-camp', 'POST', { playerId: player.id });
+    player.campQ = data.campQ;
+    player.campR = data.campR;
+    player.campPlacedAt = data.campPlacedAt;
+    player.inventory = data.inventory;
+
+    const c = hexCenter(player.campQ, player.campR);
+    campMarker.setLatLng([c.lat, c.lng]);
+
+    updateResourceBar();
+    updateInventoryPanel();
+    updateTownPanel();
+    addLog('🏕️ Camp established at current position', 'move');
+    flashTopLog('🏕️ Camp moved!');
+  } catch (e) {
+    let msg = 'Cannot make camp';
+    try { msg = JSON.parse(e.message).error || msg; } catch {}
+    addLog(`🏕️ ${msg}`, 'warn');
+  }
+}
+
+function updateTownPanel() {
+  if (!player) return;
+  const dist = hexDistance(player.q, player.r, player.campQ, player.campR);
+  const pct  = Math.round((dist / CAMP_RANGE) * 100);
+
+  document.getElementById('camp-coords-display').textContent = `${player.campQ}, ${player.campR}`;
+  document.getElementById('camp-dist-display').textContent   = `${dist} / ${CAMP_RANGE} hexes`;
+
+  const bar = document.getElementById('camp-range-bar');
+  bar.style.width = `${Math.min(100, pct)}%`;
+  bar.style.background = dist >= CAMP_RANGE ? '#e53935' : dist >= CAMP_RANGE * 0.75 ? '#f9a825' : '#4caf50';
+
+  const now = Date.now();
+  const cooldownLeft = Math.max(0, CAMP_COOLDOWN_MS - (now - (player.campPlacedAt || 0)));
+  const btn = document.getElementById('make-camp-btn');
+  const inv  = player.inventory || {};
+  const canAfford = Object.entries(CAMP_COST).every(([r, n]) => (inv[r] || 0) >= n);
+
+  if (cooldownLeft > 0) {
+    btn.disabled = true;
+    btn.textContent = `🏕️ Cooldown: ${Math.ceil(cooldownLeft / 1000)}s`;
+  } else if (!canAfford) {
+    btn.disabled = true;
+    btn.textContent = '🏕️ Not enough resources';
+  } else {
+    btn.disabled = false;
+    btn.textContent = '🏕️ Make Camp Here';
+  }
+}
+
+function campIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div class="camp-marker">🏕️</div>`,
+    iconSize: [32, 32], iconAnchor: [16, 28],
+  });
 }
 
 function heroIcon(name) {

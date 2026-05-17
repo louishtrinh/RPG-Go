@@ -85,8 +85,31 @@
         </div>
 
         <div id="panel-town" class="panel-section hidden">
-          <div class="panel-heading">🏘️ Town</div>
-          <p class="dim" style="font-size:13px;padding:8px 0">Town building coming soon.</p>
+          <div class="panel-heading">🏕️ Camp</div>
+          <div class="camp-info-block">
+            <div class="camp-stat-row">
+              <span class="camp-label">Location</span>
+              <span id="camp-coords-display" class="camp-value">—</span>
+            </div>
+            <div class="camp-stat-row">
+              <span class="camp-label">Distance</span>
+              <span id="camp-dist-display" class="camp-value">— / 20 hexes</span>
+            </div>
+            <div class="camp-range-track">
+              <div id="camp-range-bar" class="camp-range-fill"></div>
+            </div>
+          </div>
+          <div class="camp-cost-block">
+            <div class="panel-heading" style="margin-top:14px">Move Camp Cost</div>
+            <div class="camp-cost-row">
+              <span>🌲 10 Wood</span><span>🪨 5 Stone</span>
+            </div>
+          </div>
+          <button id="make-camp-btn" class="make-camp-btn" onclick="makeCamp()">🏕️ Make Camp Here</button>
+          <p class="dim" style="font-size:11px;margin-top:8px;line-height:1.5">
+            Move within 20 hexes of your camp.<br>
+            Make camp at your position to explore further.
+          </p>
         </div>
 
         <div id="panel-skills" class="panel-section hidden">
@@ -102,7 +125,7 @@
       <button class="tab active" data-tab="map"    onclick="setTab(this)">🗺️<span>Map</span></button>
       <button class="tab"        data-tab="bag"    onclick="setTab(this)">🎒<span>Bag</span></button>
       <button class="tab"        data-tab="world"  onclick="setTab(this)">🌐<span>World</span></button>
-      <button class="tab dim-tab" data-tab="town"  onclick="setTab(this)">🏘️<span>Town</span></button>
+      <button class="tab"          data-tab="town"  onclick="setTab(this)">🏕️<span>Camp</span></button>
       <button class="tab dim-tab" data-tab="skills" onclick="setTab(this)">⚔️<span>Skills</span></button>
     </div>
 
