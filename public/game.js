@@ -187,6 +187,7 @@ let collectedSet    = new Map();
 let otherMarkers    = new Map();
 let isMoving        = false;
 let moveLine        = null; // L.polyline for movement path
+let suppressRedraw  = false;
 
 // ── API ───────────────────────────────────────────────────────────────────
 
@@ -276,7 +277,7 @@ function initMap(lat, lng) {
   syncPlayers();
 
   map.on('click', onMapClick);
-  map.on('moveend zoomend', () => { drawGrid(); syncResourceMarkers(); });
+  map.on('moveend zoomend', () => { if (!suppressRedraw) { drawGrid(); syncResourceMarkers(); } });
 
   setInterval(() => { refreshResources(); syncPlayers(); }, SYNC_MS);
 
@@ -288,8 +289,7 @@ function initMap(lat, lng) {
 function initGridCanvas() {
   gridCanvas = document.createElement('canvas');
   gridCanvas.className = 'grid-canvas';
-  map.getPanes().overlayPane.appendChild(gridCanvas);
-  map.on('moveend zoomend resize', drawGrid);
+  document.getElementById('map').appendChild(gridCanvas); // child of map div, not overlayPane
   drawGrid();
 }
 
@@ -506,6 +506,7 @@ async function moveTo(targetQ, targetR) {
   }).addTo(map);
 
   isMoving = true;
+  suppressRedraw = true;
   document.getElementById('map').classList.add('moving');
 
   for (const step of path) {
@@ -520,6 +521,7 @@ async function moveTo(targetQ, targetR) {
         const lat = startLat + (endLat - startLat) * et;
         const lng = startLng + (endLng - startLng) * et;
         playerMarker.setLatLng([lat, lng]);
+        map.setView([lat, lng], map.getZoom(), { animate: false });
         if (t < 1) requestAnimationFrame(frame);
         else resolve();
       }
@@ -527,7 +529,6 @@ async function moveTo(targetQ, targetR) {
     });
 
     player.lat = endLat; player.lng = endLng; player.q = step.q; player.r = step.r;
-    map.setView([endLat, endLng], map.getZoom(), { animate: false });
     updateTopBar();
     api('/api/player/move', 'POST', {
       playerId: player.id, lat: endLat, lng: endLng, hexQ: step.q, hexR: step.r,
@@ -535,8 +536,11 @@ async function moveTo(targetQ, targetR) {
   }
 
   isMoving = false;
+  suppressRedraw = false;
   document.getElementById('map').classList.remove('moving');
   if (moveLine) { map.removeLayer(moveLine); moveLine = null; }
+  drawGrid();
+  syncResourceMarkers();
 }
 
 // ── Other players ─────────────────────────────────────────────────────────
